@@ -1,0 +1,80 @@
+{
+  "system": "Allegro WebSocket Swing PoC",
+  "business_rules": [
+    {
+      "rule_id": "BR-001",
+      "name": "Customer Search: Multi-Field Partial Match",
+      "description": "A customer record matches the search if ANY of the following conditions is true (OR logic): last name contains search term (case-insensitive), first name contains search term (case-insensitive), ZIP equals search term (exact), city contains search term (case-insensitive), street contains search term (case-insensitive), house number contains search term (case-insensitive).",
+      "source": "Search.vue::searchPerson()",
+      "type": "Search",
+      "logic": "OR across 6 fields, case-insensitive substring match except ZIP (exact)"
+    },
+    {
+      "rule_id": "BR-002",
+      "name": "WebSocket Message Routing by Target",
+      "description": "Incoming WebSocket JSON messages contain a 'target' field. If target='textarea', the content string is placed in the textArea. If target='textfield', content is deserialized as a SearchResult and all 10 Swing form fields are populated.",
+      "source": "websocket/Main.java::onMessage()",
+      "type": "MessageRouting",
+      "targets": {
+        "textarea": "Set textArea text",
+        "textfield": "Populate all 10 customer form fields"
+      }
+    },
+    {
+      "rule_id": "BR-003",
+      "name": "Zahlungsempfänger Selection Required Before Transfer",
+      "description": "When 'Nach ALLEGRO übernehmen' is clicked, the selected Zahlungsempfänger (payment recipient) replaces the full zahlungsempfaenger array on the outgoing object. If no Zahlungsempfänger is selected, an empty string is sent.",
+      "source": "Search.vue::sendMessage()",
+      "type": "DataTransfer"
+    },
+    {
+      "rule_id": "BR-004",
+      "name": "Gender Default: Female",
+      "description": "On form initialization and after event reception, the gender radio button defaults to 'Weiblich' (female). Male and Diverse are deselected.",
+      "source": "PocPresenter.java (eventEmitter subscription), PocView.java (rb_female.setSelected(true))",
+      "type": "UIDefault"
+    },
+    {
+      "rule_id": "BR-005",
+      "name": "Form Clear on Event Receipt",
+      "description": "When the EventEmitter fires (after successful HTTP POST), all form text fields are cleared and gender resets to female. The response body is displayed in the textArea.",
+      "source": "PocPresenter.java::eventEmitter.subscribe()",
+      "type": "UIBehavior"
+    },
+    {
+      "rule_id": "BR-006",
+      "name": "All Fields Submitted on Action",
+      "description": "Clicking 'Anordnen' sends ALL 13 model properties to the backend HTTP POST, regardless of which fields are filled. Empty fields are submitted as 'null' strings.",
+      "source": "PocModel.java::action()",
+      "type": "DataSubmission"
+    },
+    {
+      "rule_id": "BR-007",
+      "name": "WebSocket Broadcast to All Clients",
+      "description": "The Node.js server relays every received message verbatim to ALL connected clients, including the sender. No filtering, targeting, or transformation occurs at the server level.",
+      "source": "WebsocketServer.js",
+      "type": "CommunicationRule"
+    },
+    {
+      "rule_id": "BR-008",
+      "name": "Textarea Watch Auto-Sends",
+      "description": "Any change to the Vue textarea component's v-model automatically triggers sendMessage(val, 'textarea'), broadcasting the new textarea content to all WebSocket clients.",
+      "source": "Search.vue::watch::internal_content_textarea",
+      "type": "ReactiveBinding"
+    },
+    {
+      "rule_id": "BR-009",
+      "name": "Real-Time Two-Way Model Binding in Presenter",
+      "description": "Every keystroke in any Swing text field is immediately reflected in the model via DocumentListener (insertUpdate, removeUpdate). Radio button changes are reflected via ChangeListener. No explicit 'save' step is needed.",
+      "source": "PocPresenter.java::bind()",
+      "type": "UIBinding"
+    },
+    {
+      "rule_id": "BR-010",
+      "name": "Payment Data Validity: IBAN + BIC + Valid-From",
+      "description": "Each customer may have multiple Zahlungsempfänger (payment recipients). Each entry must have IBAN, BIC, and valid_from date. The valid_until field exists but is always empty in mock data.",
+      "source": "Search.vue::search_space data",
+      "type": "DataIntegrity"
+    }
+  ]
+}
