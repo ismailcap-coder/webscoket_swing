@@ -1,0 +1,207 @@
+{
+  "project": {
+    "name": "Allegro WebSocket Swing PoC",
+    "version": "0.0.1-SNAPSHOT",
+    "language": ["Java 22", "JavaScript (Node.js)", "Vue.js 2"],
+    "description": "Proof-of-concept for Allegro system modernization. A Vue.js search UI finds customers from a mock dataset and transfers selected records via WebSocket relay to a Java Swing desktop form, simulating legacy Allegro data entry automation.",
+    "build_tool": "Maven",
+    "java_dependencies": [
+      "tyrus-standalone-client:1.15 (WebSocket client)",
+      "websocket-api:0.2 (JSR-356)",
+      "javax.json-api:1.1.4 (JSON processing)"
+    ],
+    "node_dependencies": ["websocket (npm)"],
+    "vue_dependencies": ["Vue 2", "babel"]
+  },
+  "components": [
+    {
+      "id": "C1",
+      "name": "websocket.Main (Legacy Swing Client)",
+      "file": "swing/src/main/java/websocket/Main.java",
+      "type": "JavaClass",
+      "pattern": "Monolithic",
+      "responsibilities": [
+        "Initialize Swing UI JFrame(Allegro) 800x650",
+        "Connect to ws://localhost:1337/ via Tyrus WebSocketContainer",
+        "Receive JSON messages and route by 'target' field",
+        "Populate 10 form fields from deserialized SearchResult",
+        "Maintain CountDownLatch to keep main thread alive"
+      ],
+      "ui_fields": ["Vorname","Name","Geburtsdatum","Geschlecht","Strasse","PLZ","Ort","IBAN","BIC","Gültig ab","RT (textarea)"],
+      "inner_classes": [
+        {
+          "name": "WebsocketClientEndpoint",
+          "annotations": ["@ClientEndpoint"],
+          "methods": [
+            "onOpen(Session)",
+            "onClose(Session,CloseReason)",
+            "onMessage(String json)",
+            "sendMessage(String)",
+            "extract(String json) -> Message",
+            "toSearchResult(String json) -> SearchResult"
+          ]
+        },
+        {"name": "Message", "fields": ["target: String","content: String"]},
+        {"name": "SearchResult", "fields": ["name","first","dob","zip","ort","street","hausnr","ze_iban","ze_bic","ze_valid_from"]}
+      ]
+    },
+    {
+      "id": "C2",
+      "name": "com.Main (MVP Entry Point)",
+      "file": "swing/src/main/java/com/Main.java",
+      "type": "JavaClass",
+      "pattern": "MVP Wiring",
+      "responsibilities": [
+        "Instantiate PocView, EventEmitter, PocModel, PocPresenter",
+        "Block main thread with CountDownLatch"
+      ]
+    },
+    {
+      "id": "C3",
+      "name": "PocView",
+      "file": "swing/src/main/java/com/poc/presentation/PocView.java",
+      "type": "JavaClass",
+      "pattern": "MVP View (Passive View)",
+      "fields": [
+        "frame: JFrame",
+        "textArea: JTextArea",
+        "name/firstName/dateOfBirth/zip/ort/street/iban/bic/validFrom: JTextField",
+        "female/male/diverse: JRadioButton",
+        "gender: ButtonGroup",
+        "button: JButton(Anordnen)"
+      ],
+      "layout": "GridBagLayout, 6 columns, 6 rows"
+    },
+    {
+      "id": "C4",
+      "name": "PocPresenter",
+      "file": "swing/src/main/java/com/poc/presentation/PocPresenter.java",
+      "type": "JavaClass",
+      "pattern": "MVP Presenter",
+      "responsibilities": [
+        "Bind all 13 JTextComponent/JRadioButton fields to ModelProperties via DocumentListener/ChangeListener",
+        "Button 'Anordnen' triggers model.action()",
+        "EventEmitter subscription: on event, update textArea and clear all form fields"
+      ],
+      "methods": [
+        "bind(JTextComponent, ModelProperties)",
+        "bind(JRadioButton, ModelProperties)",
+        "initializeBindings()"
+      ]
+    },
+    {
+      "id": "C5",
+      "name": "PocModel",
+      "file": "swing/src/main/java/com/poc/model/PocModel.java",
+      "type": "JavaClass",
+      "pattern": "MVP Model",
+      "fields": [
+        "model: EnumMap<ModelProperties, ValueModel<?>>",
+        "httpBinService: HttpBinService",
+        "eventEmitter: EventEmitter"
+      ],
+      "methods": ["action(): collects all fields, POSTs to HttpBinService, emits response via EventEmitter"]
+    },
+    {
+      "id": "C6",
+      "name": "HttpBinService",
+      "file": "swing/src/main/java/com/poc/model/HttpBinService.java",
+      "type": "JavaClass",
+      "endpoint": "POST http://localhost:8080/post",
+      "content_type": "application/json",
+      "description": "Serializes Map<String,String> of all form fields to JSON, sends HTTP POST, returns response body. Backed by httpbin Docker container (kennethreitz/httpbin)."
+    },
+    {
+      "id": "C7",
+      "name": "EventEmitter",
+      "file": "swing/src/main/java/com/poc/model/EventEmitter.java",
+      "type": "JavaClass",
+      "pattern": "Observer",
+      "fields": ["listeners: List<EventListener>"],
+      "methods": ["subscribe(EventListener)","emit(String eventData)"]
+    },
+    {
+      "id": "C8",
+      "name": "EventListener",
+      "file": "swing/src/main/java/com/poc/model/EventListener.java",
+      "type": "FunctionalInterface",
+      "method": "onEvent(String eventData)"
+    },
+    {
+      "id": "C9",
+      "name": "ModelProperties",
+      "file": "swing/src/main/java/com/poc/model/ModelProperties.java",
+      "type": "Enum",
+      "values": ["TEXT_AREA","FIRST_NAME","LAST_NAME","DATE_OF_BIRTH","ZIP","ORT","STREET","IBAN","BIC","VALID_FROM","FEMALE","MALE","DIVERSE"]
+    },
+    {
+      "id": "C10",
+      "name": "ValueModel<T>",
+      "file": "swing/src/main/java/com/poc/ValueModel.java",
+      "type": "GenericClass",
+      "description": "Generic wrapper for a single typed field with get/set. Enables type-safe storage in EnumMap."
+    },
+    {
+      "id": "C11",
+      "name": "WebsocketServer.js",
+      "file": "node-server/src/WebsocketServer.js",
+      "type": "NodeJsModule",
+      "port": 1337,
+      "description": "HTTP+WebSocket server. Maintains clients[] array. On UTF8 message: broadcasts verbatim to all connected clients. On close: splices client from array.",
+      "pattern": "Broadcast relay (no business logic)"
+    },
+    {
+      "id": "C12",
+      "name": "App.vue",
+      "file": "node-vue-client/src/App.vue",
+      "type": "VueComponent",
+      "description": "Root layout: red header 'Search Mock' (#ff2b06), renders <Search> child component."
+    },
+    {
+      "id": "C13",
+      "name": "Search.vue",
+      "file": "node-vue-client/src/components/Search.vue",
+      "type": "VueComponent",
+      "description": "Core search UI. Connects to ws://localhost:1337 on mount. Provides multi-field search over in-memory mock dataset (5 customers). Sends selected customer + chosen Zahlungsempfänger via WebSocket.",
+      "mock_data_customers": [
+        "Hans Mayer (79423984)",
+        "Linda Reitmayr (67485246)",
+        "Karl May (13725246)",
+        "Jens Mueller (41125291)",
+        "Steffi Ruckmueller (31228193)"
+      ],
+      "methods": [
+        "connect()",
+        "disconnect()",
+        "searchPerson()",
+        "sendMessage(e, target)",
+        "selectResult(item)",
+        "zahlungsempfaengerSelected(item)"
+      ]
+    }
+  ],
+  "data_flow": {
+    "primary_flow": "Vue Search → WebSocket (ws://localhost:1337) → Node.js relay → Java Swing Client → UI fields populated",
+    "secondary_flow": "Java Swing UI → 'Anordnen' button → PocModel.action() → HTTP POST to httpbin:8080 → Response emitted → View updated"
+  },
+  "code_quality": {
+    "ratings": {
+      "architecture": "3/5 — MVP pattern in com/poc is clean; websocket/Main.java is monolithic",
+      "separation_of_concerns": "3/5 — Good in MVP path; poor in legacy websocket/Main.java",
+      "error_handling": "2/5 — Exceptions wrapped in RuntimeException; no user-facing error dialogs",
+      "json_parsing": "2/5 — Manual flag-based streaming parser is fragile; no POJO deserialization",
+      "test_coverage": "1/5 — Zero test files found",
+      "security": "2/5 — No CORS/origin validation in WS server; no input sanitization; hardcoded localhost URLs",
+      "code_duplication": "WARNING — websocket/Main.java and PocView.java duplicate the entire Swing UI layout",
+      "documentation": "2/5 — Minimal inline comments; no Javadoc",
+      "scalability": "2/5 — In-memory mock data; no persistence layer"
+    },
+    "critical_issues": [
+      "Duplicate UI Code — websocket/Main.java and PocView.java implement identical Swing layouts",
+      "Manual JSON Parsing — Fragile flag-based streaming parser instead of object mapping",
+      "No WebSocket Integration in MVP Path — com.Main / PocPresenter has no WebSocket code",
+      "Static Mock Data — search_space is hardcoded in Search.vue (no real backend search)",
+      "Error handling swallowed — RuntimeException wrapping hides failures silently"
+    ]
+  }
+}
